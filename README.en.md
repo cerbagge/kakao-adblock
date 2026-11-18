@@ -49,6 +49,8 @@ Discord.exe
 
 If a popup you need has disappeared, check `blocked.log` in the same folder. It records which program's window was hidden, so you can add that name to `allow.txt`. The log is cleared on the next launch once it exceeds 256 KB.
 
+If an ad popup was *not* hidden, look for `[참고: ...]` ("note") lines in `blocked.log`. They record windows that appeared in the bottom-right area but were left alone because they have a title bar or are too large, along with their position and size.
+
 ## Build
 
 ```

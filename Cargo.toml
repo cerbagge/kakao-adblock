@@ -1,6 +1,6 @@
 [package]
 name = "kakao-adblock"
-version = "1.1.0"
+version = "1.2.0"
 edition = "2024"
 description = "카카오톡 PC 광고와 오른쪽 아래 팝업을 숨기는 Windows 상주 프로그램"
 license = "MIT"

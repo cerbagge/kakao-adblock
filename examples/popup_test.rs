@@ -24,6 +24,12 @@ fn main() {
         };
         let corner = mk(wa.right - 330, wa.bottom - 110, "corner");
         let normal = mk(wa.left + 50, wa.top + 50, "normal");
+        // 제목 표시줄이 있는 오른쪽 아래 창: 숨기지 않고 [참고]로만 기록되어야 한다
+        let t = wide("captioned");
+        let captioned = CreateWindowExW(
+            WS_EX_TOOLWINDOW, cls.as_ptr(), t.as_ptr(), WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            wa.right - 330, wa.bottom - 250, 320, 120, null_mut(), null_mut(), null_mut(), null_mut(),
+        );
 
         let start = Instant::now();
         let mut msg: MSG = zeroed();
@@ -35,5 +41,6 @@ fn main() {
         }
         println!("corner visible = {}", IsWindowVisible(corner) != 0);
         println!("normal visible = {}", IsWindowVisible(normal) != 0);
+        println!("captioned visible = {}", IsWindowVisible(captioned) != 0);
     }
 }

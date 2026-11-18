@@ -126,51 +126,72 @@ unsafe fn has_kakao_ad(root: HWND) -> bool {
     found
 }
 
-/// 제목 표시줄이 없고 작은 최상위 창이 모니터 작업 영역의 오른쪽 아래 구역에 있는지 확인한다.
+enum Corner {
+    No,
+    Block,
+    /// 오른쪽 아래 구역에 떴지만 규칙에 맞지 않아 숨기지 않은 창 (진단용 기록)
+    Near(&'static str),
+}
+
+/// 최상위 창이 모니터 작업 영역의 오른쪽 아래 구역에 뜬 팝업인지 판정한다.
 /// 슬라이드 인 중이라 일부가 화면 밖에 있어도 걸리도록 오른쪽/아래 경계는 넘어도 허용한다.
-unsafe fn is_corner_popup(h: HWND) -> bool {
+unsafe fn corner_check(h: HWND) -> Corner {
     unsafe {
         if IsWindowVisible(h) == 0 {
-            return false;
+            return Corner::No;
         }
         let cls = class_of(h);
         if cls == "#32768" || cls == "tooltips_class32" {
-            return false; // 메뉴, 툴팁
-        }
-        let style = GetWindowLongW(h, GWL_STYLE) as u32;
-        if style & WS_CAPTION == WS_CAPTION {
-            return false; // 일반 창
+            return Corner::No; // 메뉴, 툴팁
         }
         let mut r: RECT = zeroed();
         GetWindowRect(h, &mut r);
         let (w, hh) = (r.right - r.left, r.bottom - r.top);
-        if w <= 0 || hh <= 0 || w > MAX_W || hh > MAX_H {
-            return false;
+        if w <= 0 || hh <= 0 {
+            return Corner::No;
         }
         let mon = MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST);
         let mut mi: MONITORINFO = zeroed();
         mi.cbSize = size_of::<MONITORINFO>() as u32;
         if GetMonitorInfoW(mon, &mut mi) == 0 {
-            return false;
+            return Corner::No;
         }
         let wa = mi.rcWork;
-        r.left >= (wa.left + wa.right) / 2
+        let in_zone = r.left >= (wa.left + wa.right) / 2
             && r.top >= (wa.top + wa.bottom) / 2
-            && r.right >= wa.right - 150
+            && r.right >= wa.right - 150;
+        if !in_zone {
+            return Corner::No;
+        }
+        let style = GetWindowLongW(h, GWL_STYLE) as u32;
+        if style & WS_CAPTION == WS_CAPTION {
+            return Corner::Near("참고: 제목 표시줄 있음, 숨기지 않음");
+        }
+        if w > MAX_W || hh > MAX_H {
+            return Corner::Near("참고: 크기 초과, 숨기지 않음");
+        }
+        Corner::Block
     }
 }
 
 unsafe fn hide(h: HWND, exe: &str, why: &str) {
-    unsafe { ShowWindow(h, SW_HIDE) };
+    unsafe {
+        ShowWindow(h, SW_HIDE);
+        record(h, exe, why);
+    }
+}
+
+/// 창 정보를 blocked.log 에 한 줄로 남긴다 (같은 창은 최근 32개 안에서 한 번만).
+unsafe fn record(h: HWND, exe: &str, why: &str) {
     let line = unsafe {
         let mut r: RECT = zeroed();
         GetWindowRect(h, &mut r);
         let mut t = zeroed();
         GetLocalTime(&mut t);
         format!(
-            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}  {}  [{}]  cls={} title={} {}x{}\r\n",
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}  {}  [{}]  cls={} title={} {}x{} at({},{})\r\n",
             t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond,
-            exe, why, class_of(h), title_of(h), r.right - r.left, r.bottom - r.top
+            exe, why, class_of(h), title_of(h), r.right - r.left, r.bottom - r.top, r.left, r.top
         )
     };
     ST.with(|s| {
@@ -297,8 +318,12 @@ unsafe fn check(root: HWND, corner: bool) {
                 return;
             }
         }
-        if !allowed && corner && is_corner_popup(root) {
-            hide(root, &exe, "오른쪽 아래 팝업");
+        if !allowed && corner {
+            match corner_check(root) {
+                Corner::Block => hide(root, &exe, "오른쪽 아래 팝업"),
+                Corner::Near(why) => record(root, &exe, why),
+                Corner::No => {}
+            }
         }
     }
 }
