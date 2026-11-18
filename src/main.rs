@@ -43,6 +43,8 @@ struct State {
     cache: HashMap<u32, Proc>,
     log: PathBuf,
     recent: Vec<usize>, // 최근에 숨긴 창 (로그 중복 방지)
+    kakao_pid: u32,
+    loc_hook: HWINEVENTHOOK, // 카카오톡 프로세스 한정 위치·크기 변경 훅
 }
 
 thread_local! {
@@ -188,6 +190,93 @@ unsafe fn hide(h: HWND, exe: &str, why: &str) {
     });
 }
 
+unsafe fn is_kakao_main(h: HWND) -> bool {
+    unsafe { class_of(h) == "EVA_Window_Dblclk" && title_of(h) == "카카오톡" }
+}
+
+/// 메인 창 하단의 광고 자리(제목 없는 EVA_ChildWindow)를 숨기고,
+/// 목록 영역(OnlineMainView/LockModeView)을 창 아래 끝까지 늘린다.
+unsafe fn fix_layout(main: HWND) {
+    unsafe {
+        let mut client: RECT = zeroed();
+        GetClientRect(main, &mut client);
+        let mut child = GetWindow(main, GW_CHILD);
+        while !child.is_null() {
+            let mut r: RECT = zeroed();
+            GetWindowRect(child, &mut r);
+            MapWindowPoints(null_mut(), main, &mut r as *mut RECT as *mut POINT, 2);
+            let cls = class_of(child);
+            let title = title_of(child);
+            if title.starts_with("OnlineMainView") || title.starts_with("LockModeView") {
+                if r.bottom != client.bottom {
+                    SetWindowPos(
+                        child, null_mut(), 0, 0, r.right - r.left, client.bottom - r.top,
+                        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                    );
+                }
+            } else if cls == "EVA_ChildWindow"
+                && title.is_empty()
+                && IsWindowVisible(child) != 0
+                && r.bottom >= client.bottom - 2
+                && r.bottom - r.top < 150
+            {
+                ShowWindow(child, SW_HIDE);
+            }
+            child = GetWindow(child, GW_HWNDNEXT);
+        }
+    }
+}
+
+unsafe extern "system" fn on_location(
+    _: HWINEVENTHOOK,
+    _: u32,
+    hwnd: HWND,
+    id_object: i32,
+    _: i32,
+    _: u32,
+    _: u32,
+) {
+    if hwnd.is_null() || id_object != OBJID_WINDOW {
+        return;
+    }
+    unsafe {
+        let root = GetAncestor(hwnd, GA_ROOT);
+        if !root.is_null() && is_kakao_main(root) {
+            fix_layout(root);
+        }
+    }
+}
+
+/// 카카오톡 pid 가 바뀌면(재시작 등) 위치·크기 변경 훅을 그 프로세스에 다시 건다.
+unsafe fn ensure_location_hook(pid: u32) {
+    let old = ST.with(|s| {
+        let mut s = s.try_borrow_mut().ok()?;
+        let st = s.as_mut()?;
+        if st.kakao_pid == pid {
+            return None;
+        }
+        st.kakao_pid = pid;
+        Some(std::mem::replace(&mut st.loc_hook, null_mut()))
+    });
+    let Some(old) = old else { return };
+    unsafe {
+        if !old.is_null() {
+            UnhookWinEvent(old);
+        }
+        let hook = SetWinEventHook(
+            EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, null_mut(),
+            Some(on_location), pid, 0, WINEVENT_OUTOFCONTEXT,
+        );
+        ST.with(|s| {
+            if let Ok(mut s) = s.try_borrow_mut() {
+                if let Some(st) = s.as_mut() {
+                    st.loc_hook = hook;
+                }
+            }
+        });
+    }
+}
+
 unsafe fn check(root: HWND, corner: bool) {
     unsafe {
         let mut pid = 0u32;
@@ -197,9 +286,11 @@ unsafe fn check(root: HWND, corner: bool) {
             return;
         }
         if exe == KAKAO_EXE {
-            let main = class_of(root) == "EVA_Window_Dblclk" && title_of(root) == "카카오톡";
-            if main {
-                return; // 메인 창은 절대 숨기지 않는다
+            if is_kakao_main(root) {
+                // 메인 창은 절대 숨기지 않고, 하단 광고 자리만 정리한다
+                ensure_location_hook(pid);
+                fix_layout(root);
+                return;
             }
             if has_kakao_ad(root) {
                 hide(root, &exe, "카카오 광고");
@@ -262,7 +353,15 @@ fn load_state() -> State {
         .unwrap_or_else(|_| "C:\\Windows".into())
         .to_lowercase()
         + "\\";
-    State { allow, windir, cache: HashMap::new(), log, recent: Vec::new() }
+    State {
+        allow,
+        windir,
+        cache: HashMap::new(),
+        log,
+        recent: Vec::new(),
+        kakao_pid: 0,
+        loc_hook: null_mut(),
+    }
 }
 
 fn main() {
