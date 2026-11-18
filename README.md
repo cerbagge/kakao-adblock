@@ -16,6 +16,14 @@ Windows용 카카오톡 PC 광고 차단기이자, 화면 오른쪽 아래에 �
    - 모니터 작업 영역의 오른쪽 아래 구역에 위치 (미끄러져 들어오는 팝업 포함)
 3. `C:\Windows` 아래의 시스템 프로그램과 Windows 기본 알림(알림 센터 토스트)은 항상 허용합니다. Windows 기본 알림은 `설정 → 시스템 → 알림`에서 앱별로 관리하시면 됩니다.
 
+## AI 도구로 설치·설정하기
+
+명령어가 익숙하지 않다면 Claude Code, Codex 같은 AI 코딩 도구에게 맡길 수 있습니다. 아래 문장을 AI 도구에 붙여 넣으십시오. 자세한 내용은 [AI_GUIDE.md](AI_GUIDE.md)에 있습니다.
+
+```
+https://raw.githubusercontent.com/cerbagge/kakao-adblock/main/AI_GUIDE.md 문서를 읽고, kakao-adblock을 설치하고 시작 프로그램에 등록해줘.
+```
+
 ## 설치
 
 1. [Releases](../../releases)에서 최신 `kakao-adblock-*.zip`을 내려받아 원하는 폴더에 압축을 풉니다.
