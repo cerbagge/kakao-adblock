@@ -27,6 +27,7 @@ const LOG_LIMIT: u64 = 256 * 1024;
 const DEFAULT_ALLOW: &str = "\
 # 오른쪽 아래 팝업을 허용할 프로그램의 실행 파일 이름 (한 줄에 하나, 대소문자 무시)
 # C:\\Windows 아래의 시스템 프로그램과 Windows 기본 알림은 이 목록과 무관하게 항상 허용됩니다.
+# '*' 한 줄을 넣으면 모든 프로그램을 허용합니다 (카카오톡 광고만 차단).
 # 수정한 뒤에는 프로그램을 다시 실행해야 반영됩니다.
 KakaoTalk.exe
 ";
@@ -95,7 +96,7 @@ fn classify(pid: u32) -> Option<(String, bool, bool)> {
                     let name = path.rsplit('\\').next().unwrap_or("").to_string();
                     Proc {
                         system: path.starts_with(&st.windir),
-                        allowed: st.allow.iter().any(|a| *a == name),
+                        allowed: st.allow.iter().any(|a| *a == name || a == "*"),
                         name,
                     }
                 }
